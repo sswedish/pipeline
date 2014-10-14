@@ -13,10 +13,9 @@ import Queue
 import threading
 import time
 import sys
-
-import ActionList from pipelineConfig
-import threadList from pipelineConfig
-import safeExecute from pipelineUtilities
+import copy
+from pipelineConfig import ActionList, threadList, start, end
+from pipelineUtilities import safeExecute 
 
 con = mdb.connect('localhost', 'root', '', 'strikedbj3')
 cur = con.cursor()
@@ -43,8 +42,7 @@ with con:
         COMMAND = "CREATE TABLE rollup ( period_id INT, time_id DATETIME, start DATETIME, end DATETIME)"   
         cur.execute(COMMAND)
 
-        today = datetime.date(2014,1,1)
-        end = datetime.date(2014,7,20)
+        today = copy.copy(start)        
         while (today < end):
 
             d28 = today + datetime.timedelta(days=28)
@@ -102,7 +100,7 @@ SELECT *
 FROM 
 (
 SELECT id, time, plan 
-FROM EdUse
+FROM EDUse
 UNION
 SELECT id, time, plan 
 FROM vPrice
@@ -150,6 +148,21 @@ ORDER BY 1,2;
 with con:
     cur.execute(COMMAND)
 
+COMMAND = """ALTER TABLE ActiveUsers ADD KEY (id)"""
+with con:
+    cur.execute(COMMAND)
+
+COMMAND = """ALTER TABLE ActiveUsers ADD KEY (day)"""
+with con:
+    cur.execute(COMMAND)
+
+COMMAND = """ALTER TABLE ActiveUsers ADD KEY (id,day)"""
+with con:
+    cur.execute(COMMAND)
+
+COMMAND = """ALTER TABLE ActiveUsers ADD KEY(day,id)"""
+with con:
+    cur.execute(COMMAND)
 
 # In[9]:
 
@@ -196,6 +209,29 @@ class myThreadWCU3(threading.Thread):
                         SELECT id FROM ActiveUsers 
                         WHERE day ='"""+str(day)+"""')"""
                 safeExecute(COMMAND,self.con,self.cur,workQueue)        
+
+
+                COMMAND = """ALTER TABLE  Act_"""+str(code)+""" ADD KEY (day)"""
+                print(COMMAND)
+                with self.con:
+                    self.cur.execute(COMMAND)
+
+                COMMAND = """ALTER TABLE Act_"""+str(code)+""" ADD KEY (id)"""
+                print(COMMAND)
+                with self.con:
+                    self.cur.execute(COMMAND)
+
+                COMMAND = """ALTER TABLE  Act_"""+str(code)+""" ADD KEY (id,day)"""
+                print(COMMAND)
+                with self.con:
+                    self.cur.execute(COMMAND)
+
+                COMMAND = """ALTER TABLE  Act_"""+str(code)+""" ADD KEY(day,id)"""
+                print(COMMAND)
+                with self.con:
+                    self.cur.execute(COMMAND)
+
+
                 
                 #Now the complicated query on a smaller table
                 COMMAND ="DROP TABLE IF EXISTS WCU3_"+str(code)
@@ -203,7 +239,7 @@ class myThreadWCU3(threading.Thread):
                 COMMAND ="""
                 CREATE TABLE WCU3_"""+str(code)+"""
                     SELECT 
-                        """+str(day)+""" AS date ,
+                        '"""+str(day)+"""' AS date ,
                         temp.e_id AS id , 
                         MIN(temp.eTime) AS minTime,
                     CASE 
@@ -222,8 +258,8 @@ class myThreadWCU3(threading.Thread):
                       FROM Act_"""+str(code)+""" e
                       LEFT JOIN Act_"""+str(code)+""" ee
                         ON e.id = ee.id
-                        AND ee.day > """+str(day)+""" 
-                        AND ee.day < """+str(day)+""" + INTERVAL 28 day
+                        AND ee.day > '"""+str(day)+"""' 
+                        AND ee.day < '"""+str(day)+"""' + INTERVAL 28 day
                         ) AS temp
                      GROUP BY 1,2
                      ORDER BY 1
@@ -231,6 +267,23 @@ class myThreadWCU3(threading.Thread):
                 
                 print self.name+" Executing:"+COMMAND
                 safeExecute(COMMAND,self.con,self.cur,workQueue)
+
+                COMMAND = """ALTER TABLE  WCU3_"""+str(code)+""" ADD KEY (date)"""
+                print(COMMAND)
+                safeExecute(COMMAND,self.con,self.cur,workQueue)
+
+                COMMAND = """ALTER TABLE WCU3_"""+str(code)+""" ADD KEY (id)"""
+                print(COMMAND)
+                safeExecute(COMMAND,self.con,self.cur,workQueue)
+
+                COMMAND = """ALTER TABLE  WCU3_"""+str(code)+""" ADD KEY (id,date)"""
+                print(COMMAND)
+                safeExecute(COMMAND,self.con,self.cur,workQueue)
+
+                COMMAND = """ALTER TABLE  WCU3_"""+str(code)+""" ADD KEY (date,id)"""
+                print(COMMAND)
+                safeExecute(COMMAND,self.con,self.cur,workQueue)
+
             else:
                 queueLock.release()
             time.sleep(1)
@@ -241,7 +294,7 @@ class myThreadWCU3(threading.Thread):
 
 #Execute parallel table construction
 queueLock = threading.Lock()
-workQueue = Queue.Queue(201)
+workQueue = Queue.Queue()
 threads = []
 threadID = 1
 exitFlag = 0
@@ -255,8 +308,7 @@ for tName in threadList:
 queueLock.acquire()
 # Fill the queue
 i = 0; 
-today = datetime.date(2014,1,1)
-end = datetime.date(2014,7,20)
+today = copy.copy(start)        
 while (today < end):
     workQueue.put([i,today])
     today = today + datetime.timedelta(days=1)
@@ -279,3 +331,46 @@ print "Exiting Main Thread"
 # In[ ]:
 
 # Do the union 
+
+#Lets create unioned table of all actions
+COMMAND = "DROP TABLE IF EXISTS WCU3"
+with con:
+    cur.execute(COMMAND)
+    
+today = copy.copy(start)        
+COMMAND = """
+CREATE TABLE WCU3
+SELECT *
+FROM 
+(FROM WCU3_'"""+str(today)""",
+                 SELECT date, id, minTime, churned, plan
+                 """ 
+today = today + datetime.timedelta(days=1)
+while (today < end):
+    today = today + datetime.timedelta(days=1)
+    COMMAND +="""UNION
+                 FROM WCU3_'"""+str(today)""",
+                 SELECT date, id, minTime, churned, plan
+                 """ 
+COMMAN += """) temp; """
+with con:
+    cur.execute(COMMAND)
+
+print self.name+" Executing:"+COMMAND
+safeExecute(COMMAND,self.con,self.cur,workQueue)
+
+COMMAND = """ALTER TABLE  WCU3"""+str(code)+""" ADD KEY (date)"""
+print(COMMAND)
+safeExecute(COMMAND,self.con,self.cur,workQueue)
+
+COMMAND = """ALTER TABLE WCU3"""+str(code)+""" ADD KEY (id)"""
+print(COMMAND)
+safeExecute(COMMAND,self.con,self.cur,workQueue)
+
+COMMAND = """ALTER TABLE  WCU3"""+str(code)+""" ADD KEY (id,date)"""
+print(COMMAND)
+safeExecute(COMMAND,self.con,self.cur,workQueue)
+
+COMMAND = """ALTER TABLE  WCU3"""+str(code)+""" ADD KEY (date,id)"""
+print(COMMAND)
+safeExecute(COMMAND,self.con,self.cur,workQueue)

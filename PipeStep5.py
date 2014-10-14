@@ -10,11 +10,10 @@ import threading
 import time
 import sys
 
-import ActionList from pipelineConfig
-import threadList from pipelineConfig
-import safeExecute from pipelineUtilities
-
+from pipelineConfig import ActionList, threadList 
+from pipelineUtilities import safeExecute 
 exitFlag = 0
+
 #Setup for parrallel run to construct count tables
 threadList = ["Thread-1","Thread-2"]    
 ActionList = [ "Ed20","Ed50"]

@@ -9,9 +9,8 @@ import Queue
 import threading
 import time
 import sys
-import ActionList from pipelineConfig
-import threadList from pipelineConfig
-import safeExecute from pipelineUtilities
+from pipelineConfig import ActionList, threadList 
+from pipelineUtilities import safeExecute 
 
 exitFlag = 0
 class myThreadDeltaVars(threading.Thread):
